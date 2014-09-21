@@ -1,0 +1,163 @@
+---
+output: pdf_document
+---
+####"Practical Machine Learning Course Project"
+
+**by nakpunonu** -- **09/2014**
+
+####Executive Summary
+
+The proliferation of personal activity monitoring devices has generated a group of enthusiasts who take regular measurements about their physical actitities with an objective to improve their healths and find patterns in their behavior, among other things. It is common for these people to quantify how much of a particular activity they do; however this may not give the complete picture because it could be very helpful to also quantify how well they do it. The aim of the analytical model designed in this document is to fill this gap.
+
+Two models using two similar algorithms, partition tree and random forest, were built. The latter greatly outperformed the former and is therefore my model of choice with an out-of-sample accuracy of approximately `99.6% to 99.8%`. This corresponds to an out-of-sample error rate of approximately `0.2% to 0.4%`. The response variable is the classe variable. The most important predictors in this model include measurements for num_window, roll_belt, pitch_belt, yaw_belt, total_accel_belt.
+
+The final model was applied to a test set (assigned by the instructor) of 20 observations. The response variable, classe, was correctly predicted in all 20 cases resulting in an accuracy of `100%`.
+
+####Data Preparation
+```{r, echo=FALSE}
+#read data
+training <- read.csv("C:/Users/nakpunonu/Google Drive/Courses Online/R Programming/R Working Directory/PML_course_project/pml-training.csv")
+testing <- read.csv("C:/Users/nakpunonu/Google Drive/Courses Online/R Programming/R Working Directory/PML_course_project/pml-testing.csv")
+```
+
+After reading in the data, I generated the distribution of the classe variable to get
+more understanding of the data.
+```{r, echo=FALSE}
+table(training$classe)/length(training$classe)
+```
+
+Blank columns as well as columns with NAs were deleted. This was first done to the testing set and then mirrored in the training set.
+```{r}
+missingcols <- is.na(colSums(testing[,7:ncol(testing)]))
+names(missingcols) <- NULL #remove vector names (not necessary, just preference)
+out <- !missingcols #columns to be removed now identified as TRUE
+testing2 <- testing[,7:ncol(testing)][,out] #remove unwanted
+testing2 <- cbind(testing[1:6],testing2) #re-attach first couple of columns
+
+#remove same columns from training data set
+
+intersect <- names(training) %in% names(testing2) #columns in both
+training2 <- training[,intersect] # select columns from training
+training2 <- cbind(training2,training[,160]) #add back y variable
+names(training2)[60] <- "classe" #add back y variable, name appropriately
+```
+
+
+```{r, echo=FALSE,results='hide'}
+library(caret)
+inTrain <- createDataPartition(y=training2$classe,p=0.7, list=FALSE) #75%
+training3 <- training2[inTrain,]
+validation3 <- training2[-inTrain,]
+```
+
+Training data was further sub-divided into two sets: 70% to a Training set and 30% to a validation set.
+
+A summary table was generated to get a general idea of the data set.
+```{r, echo=FALSE, results='hide'}
+summary(training2)
+```
+
+There were considerations to identify the "near-zero variance" variables but since robust models with trees were going to be built I decided to ignore this step.
+
+####Model 1: Partition Tree
+
+The first model is a Partition Tree. All the remaining predictor variables in the dataset were used to create a partition tree model.
+```{r, cache=TRUE}
+modFit <- train(classe ~ .,method="rpart",data=training3[,7:60])
+```
+
+A graphical output of the tree as well as model interpretation is shown below.
+```{r, echo=FALSE}
+library(rattle)
+fancyRpartPlot(modFit$finalModel,main="Partition Tree")
+print(modFit$finalModel)
+```
+
+**Interpretation:** For instance, an obsevation with a roll_belt value less than 130.5, a pitch_forearm value greater than -34 and a num_window value greater than or equal to 46 is classifed in the E classe.
+
+#####Cross-Validation
+
+The classification matrix (on the validation data) is generated below:
+```{r, echo=FALSE}
+valtest <- predict(modFit,newdata=validation3)
+confusionMatrix1 <- confusionMatrix(validation3$classe,valtest)
+confusionMatrix1$table
+```
+
+#####In-Sample and Out-of-Sample Error
+
+The estimate of the in-sample accuracy (seen on the training set) is `r confusionMatrix1$overall[1]` and the estimate of the in-sample error rate (seen on the training set) is:
+```{r}
+insample1 <- 1 - confusionMatrix1$overall[1]
+names(insample1) <- "in-sample error rate"
+insample1
+```
+
+The estimate of the out-of-sample accuracy (seen on the validation set) is `r modFit$results[1,2]` and the estimate of the out-of-sample error rate (seen on the validation data) is: 
+```{r}
+outsample1 <- 1 - modFit$results[1,2]
+names(outsample1) <- "out-of-sample error rate"
+outsample1
+```
+
+Due to dissatisfaction with the low accuracy of this model, a random forest model is developed next.
+
+####Model 2: Random Forest
+
+The second model is a Random Forest. All the remaining predictor variables in the dataset were used.
+```{r}
+library(randomForest)
+modFit2 <- randomForest(classe ~ .,data=training3[,7:60])
+```
+
+#####Cross-Validation
+
+The classification matrix (on the validation data) is generated below:
+```{r, echo=FALSE}
+valtest2 <- predict(modFit2,newdata=validation3)
+confusionMatrix2 <- confusionMatrix(validation3$classe,valtest2)
+confusionMatrix2$table
+```
+
+#####In-Sample and Out-of-Sample Error
+
+The estimate of the in-sample accuracy (seen on the training set) is `r confusionMatrix(training3$classe,modFit2$predicted)$overall[1]` and the estimate of the in-sample error rate (seen on the training data) is:
+```{r}
+insample2 <- 1 - confusionMatrix(training3$classe,modFit2$predicted)$overall[1]
+names(insample2) <- "in-sample error rate"
+insample2
+```
+
+The estimate of the out-of-sample accuracy (seen on the validation set) is `r confusionMatrix2$overall[1]` and the estimate of the out-of-sample error rate (seen on the validation data) is:
+```{r}
+outsample2 <- 1 - confusionMatrix2$overall[1]
+names(outsample2) <- "out-of-sample error rate"
+outsample2
+```
+
+Due to the increased accuracy of the random forest model over the partition tree model, the random forest model is my model of choice. 
+The top 15 (most important) variables in this model are shown below:
+
+```{r}
+head(modFit2$importance,15) #top 15 important variables
+```
+
+Some exploratory graphs to examine some of these variables is shown below. We can clearly see that they can collectively explain the different classe values.
+
+```{r,echo=FALSE}
+library(gridExtra) #for putting ggplots in grids
+explore1 <- qplot(num_window,roll_belt,col=classe,data=training3)
+explore2 <- qplot(num_window,pitch_belt,col=classe,data=training3)
+explore3 <- qplot(num_window,yaw_belt,col=classe,data=training3)
+explore4 <- qplot(num_window,total_accel_belt,col=classe,data=training3)
+grid.arrange(explore1,explore2,explore3,explore4,ncol=2,main="Exploratory Graphs (Using the Random Tree's Top 5 Predictors)")
+```
+
+####Decision
+
+Due to its high accuracy, the random forest model is selected and is therefore applied to the testing set. Output of its predictions are shown below. When submitted via the class instructor's automated grading, the predictions were 100% accurate.
+```{r, echo=FALSE}
+predictions <- predict(modFit2,newdata=testing2)
+predictions
+```
+
